@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Play, CheckCircle, Activity, Star, Calendar, Users, DollarSign, Shield, Gift, Clock, Loader2, Zap, Trophy, MapPin } from 'lucide-react';
+import { Play, CheckCircle, Activity, Star, Calendar, Users, DollarSign, Shield, Gift, Clock, Loader2, Zap, Trophy, MapPin, Check } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
 
-// --- SECURE CONFIGURATION ---
-// These values are pulled from Vercel environment variables
+// --- CONFIGURATION ---
+
+// 1. FOR PREVIEW IN THIS CHAT
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// 2. FOR VERCEL DEPLOYMENT
+/*
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -14,10 +20,10 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
+*/
 
-// Initialize Firebase safely
 let app, auth, db;
-if (firebaseConfig.apiKey) {
+if (firebaseConfig) {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
@@ -256,67 +262,94 @@ const IntroScreen = ({ onStart, isAuthReady }) => {
         >
           {!isAuthReady ? <Loader2 className="animate-spin" /> : <><Play size={20} fill="currentColor" /> Start Survey</>}
         </button>
-        
-        {!isAuthReady && (
-           <p className="text-xs text-center text-gray-600">Connecting to secure server...</p>
-        )}
       </div>
     </div>
   );
 };
 
-const ChoiceCard = ({ option, data, onSelect }) => {
+const ChoiceCard = ({ option, data, onSelect, isSelected, isOtherSelected }) => {
   const price = data["Monthly Price"];
   
+  // Dynamic styles based on selection state
+  // If THIS card is selected: Green border, Green glow
+  // If OTHER card is selected: Opacity reduced, Grayscale
+  let containerClasses = "bg-gray-900 border border-gray-800";
+  if (isSelected) {
+      containerClasses = "bg-gray-900 border-2 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)] scale-[1.02]";
+  } else if (isOtherSelected) {
+      containerClasses = "bg-gray-900 border-gray-800 opacity-40 grayscale";
+  }
+
   return (
-    <div 
-      onClick={onSelect}
-      className="group relative cursor-pointer bg-gray-900 hover:bg-gray-800 border border-gray-800 hover:border-red-600 rounded-2xl p-5 transition-all duration-200 flex flex-col h-full transform hover:-translate-y-1 hover:shadow-2xl shadow-black"
-    >
-      <div className="mb-6 pb-4 border-b border-gray-800 group-hover:border-gray-700">
-        <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">Option {option}</h3>
+    <div className={`relative rounded-xl p-3 md:p-5 transition-all duration-300 flex flex-col h-full ${containerClasses}`}>
+      
+      {/* Compact Header */}
+      <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-800">
+        <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">Option {option}</span>
         <div className="flex items-baseline gap-1 text-white">
-            <span className="text-3xl font-black">{price}</span>
-            <span className="text-sm text-gray-500 font-medium">/ mo</span>
+            <span className="text-xl font-black">{price}</span>
+            <span className="text-xs text-gray-500 font-medium">/mo</span>
         </div>
       </div>
 
-      <div className="space-y-4 flex-grow">
-        <div className="flex items-start gap-3">
-          <div className="mt-1 text-red-500"><Activity size={18} /></div>
-          <div>
-            <p className="text-xs text-gray-500 font-bold uppercase">Access</p>
-            <p className="text-sm font-semibold text-white">{data["Class Count"]}</p>
-          </div>
+      {/* Attributes - Compact Grid for Mobile */}
+      <div className="space-y-2 flex-grow">
+        {/* Row 1: Access & Commitment */}
+        <div className="grid grid-cols-2 gap-2">
+            <div>
+                <div className="flex items-center gap-1 mb-0.5">
+                    <Activity size={12} className="text-red-500" />
+                    <span className="text-[10px] text-gray-500 font-bold uppercase">Access</span>
+                </div>
+                <p className="text-xs font-semibold text-white truncate">{data["Class Count"]}</p>
+            </div>
+            <div>
+                <div className="flex items-center gap-1 mb-0.5">
+                    <Shield size={12} className="text-red-500" />
+                    <span className="text-[10px] text-gray-500 font-bold uppercase">Term</span>
+                </div>
+                <p className="text-xs font-semibold text-gray-300 truncate">{data["Commitment"]}</p>
+            </div>
         </div>
-        <div className="flex items-start gap-3">
-          <div className="mt-1 text-red-500"><Shield size={18} /></div>
-          <div>
-            <p className="text-xs text-gray-500 font-bold uppercase">Commitment</p>
-            <p className="text-sm font-medium text-gray-300">{data["Commitment"]}</p>
-          </div>
-        </div>
-        
-        <div className="flex items-start gap-3">
-          <div className="mt-1 text-red-500"><Zap size={18} /></div>
-          <div>
-            <p className="text-xs text-gray-500 font-bold uppercase">Recovery</p>
-            <p className="text-sm font-medium text-gray-300">{data["Recovery"]}</p>
-          </div>
-        </div>
-        
-        <div className="flex items-start gap-3">
-          <div className="mt-1 text-yellow-500"><Trophy size={18} /></div>
-          <div>
-            <p className="text-xs text-yellow-600 font-bold uppercase">Strategic Perk</p>
-            <p className="text-sm font-medium text-white">{data["Strategic Perk"]}</p>
-          </div>
+
+        {/* Row 2: Recovery & Perks */}
+        <div className="grid grid-cols-2 gap-2 pt-1">
+            <div>
+                 <div className="flex items-center gap-1 mb-0.5">
+                    <Zap size={12} className="text-red-500" />
+                    <span className="text-[10px] text-gray-500 font-bold uppercase">Recovery</span>
+                </div>
+                <p className="text-xs font-medium text-gray-300 truncate">{data["Recovery"]}</p>
+            </div>
+            <div>
+                 <div className="flex items-center gap-1 mb-0.5">
+                    <Trophy size={12} className="text-yellow-500" />
+                    <span className="text-[10px] text-yellow-600 font-bold uppercase">Perk</span>
+                </div>
+                <p className="text-xs font-medium text-white truncate">{data["Strategic Perk"]}</p>
+            </div>
         </div>
       </div>
 
-      <div className="mt-6 pt-4 border-t border-gray-800 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-        <span className="text-xs font-bold text-red-500 uppercase tracking-widest">Select This Plan</span>
-        <CheckCircle size={20} className="text-red-500" />
+      {/* Explicit Select Button */}
+      <div className="mt-4 pt-2">
+        <button 
+            onClick={onSelect}
+            disabled={isSelected || isOtherSelected}
+            className={`w-full py-2 rounded-lg font-bold uppercase text-xs tracking-widest transition-all flex items-center justify-center gap-2 ${
+                isSelected 
+                ? "bg-green-600 text-white cursor-default"
+                : isOtherSelected
+                ? "bg-gray-800 text-gray-500 cursor-not-allowed"
+                : "bg-red-600 text-white hover:bg-red-500 active:scale-95"
+            }`}
+        >
+            {isSelected ? (
+                <>Selected <Check size={14} /></>
+            ) : (
+                "Select Plan"
+            )}
+        </button>
       </div>
     </div>
   );
@@ -381,7 +414,7 @@ const ResultsScreen = ({ demographic, choices, onReset }) => {
 
       <div className="space-y-4">
         <p className="text-xs text-center text-gray-500">
-           Responses have been securely saved to the Rumble database.
+           Responses have been securely saved.
         </p>
         
         <button 
@@ -399,7 +432,6 @@ const LoadingScreen = () => (
     <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6">
         <Loader2 className="animate-spin text-red-600 mb-4" size={48} />
         <h2 className="text-xl font-bold uppercase italic tracking-wider">Saving Responses...</h2>
-        <p className="text-gray-500 text-sm mt-2">Connecting to headquarters</p>
     </div>
 );
 
@@ -408,20 +440,19 @@ const LoadingScreen = () => (
 export default function App() {
   const [screen, setScreen] = useState('intro'); 
   const [demographics, setDemographics] = useState(null);
-  
   const [questionQueue, setQuestionQueue] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  
   const [history, setHistory] = useState([]);
   const [user, setUser] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // New state for transition animation
+  const [transitionState, setTransitionState] = useState('idle'); // 'idle', 'selected-A', 'selected-B'
+  
   const TOTAL_QUESTIONS = FIXED_QUESTIONS.length;
 
   useEffect(() => {
-    // Only attempt auth if env vars are present (prevents crash during initial dev)
-    if (!firebaseConfig.apiKey) return;
-
+    if (!firebaseConfig) return;
     const initAuth = async () => {
        try { await signInAnonymously(auth); } catch (error) { console.error("Auth Error:", error); }
     };
@@ -439,7 +470,17 @@ export default function App() {
     setScreen('survey');
   };
 
-  const handleChoice = async (choice) => {
+  const handleSelectWithDelay = (choice) => {
+      // 1. Show visual feedback immediately
+      setTransitionState(choice === 'A' ? 'selected-A' : 'selected-B');
+
+      // 2. Wait 500ms before actually moving to next slide
+      setTimeout(() => {
+          processChoice(choice);
+      }, 600);
+  };
+
+  const processChoice = async (choice) => {
     const currentSet = questionQueue[currentQuestionIndex];
     const record = {
       questionId: currentSet.question_id, 
@@ -455,6 +496,7 @@ export default function App() {
     if (currentQuestionIndex >= TOTAL_QUESTIONS - 1) {
       await finishSurvey(newHistory);
     } else {
+      setTransitionState('idle'); // Reset visuals
       setCurrentQuestionIndex(prev => prev + 1);
       window.scrollTo(0, 0);
     }
@@ -464,7 +506,7 @@ export default function App() {
       setIsSubmitting(true);
       if (db && user) {
           try {
-              const collectionRef = collection(db, 'rumble_responses');
+              const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'rumble_survey_responses');
               await addDoc(collectionRef, {
                   userId: user.uid,
                   demographics: demographics,
@@ -487,24 +529,26 @@ export default function App() {
     setCurrentQuestionIndex(0);
   };
 
-  const isAuthReady = user !== null;
+  const isAuthReady = user !== null || !firebaseConfig;
 
   if (isSubmitting) return <LoadingScreen />;
 
   const currentSet = questionQueue[currentQuestionIndex];
 
   return (
-    <div className="font-sans antialiased bg-black min-h-screen text-slate-200 selection:bg-red-900 selection:text-white">
+    <div className="font-sans antialiased bg-black min-h-screen text-slate-200 selection:bg-red-900 selection:text-white pb-10">
       {screen === 'intro' && <IntroScreen onStart={startSurvey} isAuthReady={isAuthReady} />}
       
       {screen === 'survey' && currentSet && (
-        <div className="max-w-4xl mx-auto p-4 md:p-8 min-h-screen flex flex-col">
-          <div className="mb-8">
+        <div className="max-w-md mx-auto p-4 flex flex-col h-screen">
+          
+          {/* Header & Progress */}
+          <div className="mb-4 shrink-0">
             <div className="flex justify-between items-end mb-2">
-                <span className="text-xs font-bold uppercase text-red-600 tracking-widest">
-                    Question {currentQuestionIndex + 1} of {TOTAL_QUESTIONS}
+                <span className="text-[10px] font-bold uppercase text-red-600 tracking-widest">
+                    Question {currentQuestionIndex + 1} / {TOTAL_QUESTIONS}
                 </span>
-                <span className="text-xs font-mono text-gray-500">
+                <span className="text-[10px] font-mono text-gray-500">
                     {Math.round(((currentQuestionIndex + 1) / TOTAL_QUESTIONS) * 100)}%
                 </span>
             </div>
@@ -516,30 +560,35 @@ export default function App() {
             </div>
           </div>
 
-          <div className="text-center mb-8">
-            <h2 className="text-2xl md:text-3xl font-black text-white italic uppercase tracking-tight">
-              Which option is better?
+          <div className="text-center mb-4 shrink-0">
+            <h2 className="text-xl font-black text-white italic uppercase tracking-tight">
+              Which plan is better?
             </h2>
-            <p className="text-gray-500 mt-2 text-sm md:text-base">
-                Tap the card that offers the best value for your lifestyle.
-            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 flex-grow">
+          {/* Cards Container - Fits on screen */}
+          <div className="grid grid-cols-1 gap-3 flex-grow min-h-0 overflow-y-auto">
             <ChoiceCard 
+                key={`${currentSet.question_id}-A`}
                 option="A" 
                 data={currentSet.option_a} 
-                onSelect={() => handleChoice('A')} 
+                onSelect={() => handleSelectWithDelay('A')}
+                isSelected={transitionState === 'selected-A'}
+                isOtherSelected={transitionState === 'selected-B'}
             />
             <ChoiceCard 
+                key={`${currentSet.question_id}-B`}
                 option="B" 
                 data={currentSet.option_b} 
-                onSelect={() => handleChoice('B')} 
+                onSelect={() => handleSelectWithDelay('B')}
+                isSelected={transitionState === 'selected-B'}
+                isOtherSelected={transitionState === 'selected-A'}
             />
           </div>
 
-          <div className="mt-8 text-center pb-8">
-             <button onClick={() => handleChoice('None')} className="text-xs font-bold text-gray-600 hover:text-gray-400 uppercase tracking-widest border-b border-transparent hover:border-gray-600 transition-all">
+          {/* Skip Button */}
+          <div className="mt-4 text-center shrink-0">
+             <button onClick={() => handleSelectWithDelay('None')} className="text-[10px] font-bold text-gray-600 hover:text-gray-400 uppercase tracking-widest border-b border-transparent hover:border-gray-600 transition-all p-2">
                 I wouldn't choose either
              </button>
           </div>

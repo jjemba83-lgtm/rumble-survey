@@ -4,16 +4,8 @@ import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
 
-// --- CONFIGURATION ---
-
-// 1. PREVIEW MODE (Active in this Chat)
-// This block allows the app to run immediately in this window.
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-// 2. PRODUCTION MODE (For Vercel Deployment)
-// When you deploy to Vercel, UNCOMMENT the block below and COMMENT OUT the block above.
-/*
+// --- PRODUCTION CONFIGURATION ---
+// This strictly looks for Vercel Environment Variables.
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -22,17 +14,22 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
-*/
 
 // Initialize Firebase safely
 let app, auth, db;
-// Check if config exists to prevent crash
-if (firebaseConfig) {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
+
+// Check if config exists to prevent crash if env vars are missing
+if (firebaseConfig.apiKey) {
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (err) {
+    console.error("Firebase Init Error:", err);
+  }
 } else {
-  console.log("Running in offline mode (No Firebase Config detected)");
+  // If no keys are found, we log an error but allow the UI to render (in offline mode)
+  console.error("CRITICAL: Firebase API Keys are missing. Check Vercel Settings.");
 }
 
 // --- FIXED SURVEY DATA ---
@@ -464,17 +461,26 @@ export default function App() {
   const TOTAL_QUESTIONS = FIXED_QUESTIONS.length;
 
   useEffect(() => {
-    if (!firebaseConfig) {
-      console.warn("No Firebase Config loaded.");
-      return;
+    if (!firebaseConfig.apiKey) {
+      console.warn("No Firebase Config loaded (Offline Mode).");
+      // We don't return here to allow offline mode for testing UI
     }
 
     const initAuth = async () => {
-       try { await signInAnonymously(auth); } catch (error) { console.error("Auth Error:", error); }
+       try { 
+         if (auth) {
+           await signInAnonymously(auth); 
+         }
+       } catch (error) { 
+         console.error("Auth Error:", error); 
+       }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => setUser(currentUser));
-    return () => unsubscribe();
+    
+    if (auth) {
+      const unsubscribe = onAuthStateChanged(auth, (currentUser) => setUser(currentUser));
+      return () => unsubscribe();
+    }
   }, []);
 
   const startSurvey = (data) => {
@@ -521,16 +527,8 @@ export default function App() {
 
       if (db && user) {
           try {
-              // FOR PREVIEW: Use 'artifacts' path
-              // FOR PRODUCTION: Use 'rumble_responses' collection
-              // The active config here is PREVIEW, so we default to 'artifacts'.
-              // When you deploy to Vercel and uncomment the production config,
-              // you should also change this line to: const collectionRef = collection(db, 'rumble_responses');
-              
-              const isPreview = typeof __firebase_config !== 'undefined';
-              const collectionRef = isPreview 
-                ? collection(db, 'artifacts', appId, 'public', 'data', 'rumble_survey_responses')
-                : collection(db, 'rumble_responses');
+              // PRODUCTION PATH: rumble_responses
+              const collectionRef = collection(db, 'rumble_responses');
               
               await addDoc(collectionRef, {
                   userId: user.uid,
@@ -546,7 +544,13 @@ export default function App() {
               setErrorMsg("Failed to save your survey. Please check your internet connection.");
           }
       } else {
-          setErrorMsg("System error: Database not connected. Please refresh.");
+          // If we are in offline/demo mode (no config), just go to results
+          if (!firebaseConfig.apiKey) {
+             console.log("Demo Mode: Survey finished (not saved to DB)");
+             setScreen('results');
+          } else {
+             setErrorMsg("System error: Database not connected. Please refresh.");
+          }
       }
       
       setIsSubmitting(false);
@@ -568,7 +572,8 @@ export default function App() {
   // If there was a save error, show error screen
   if (errorMsg) return <ErrorScreen error={errorMsg} onRetry={() => finishSurvey(history)} />;
 
-  const isAuthReady = user !== null;
+  // In production, we consider auth ready if user exists OR if config is missing (so UI doesn't block)
+  const isAuthReady = user !== null || !firebaseConfig.apiKey;
   const currentSet = questionQueue[currentQuestionIndex];
 
   return (

@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Play, CheckCircle, Activity, Star, Calendar, Users, DollarSign, Shield, Gift, Clock, Loader2, Zap, Trophy, MapPin, Check } from 'lucide-react';
+import { Play, CheckCircle, Activity, Star, Calendar, Users, DollarSign, Shield, Gift, Clock, Loader2, Zap, Trophy, MapPin, Check, AlertCircle } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 // --- CONFIGURATION ---
 
-// 1. FOR PREVIEW IN THIS CHAT
+// 1. PREVIEW MODE (Active in this Chat)
+// This block allows the app to run immediately in this window.
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// 2. FOR VERCEL DEPLOYMENT
+// 2. PRODUCTION MODE (For Vercel Deployment)
+// When you deploy to Vercel, UNCOMMENT the block below and COMMENT OUT the block above.
 /*
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -22,11 +24,15 @@ const firebaseConfig = {
 };
 */
 
+// Initialize Firebase safely
 let app, auth, db;
+// Check if config exists to prevent crash
 if (firebaseConfig) {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
+} else {
+  console.log("Running in offline mode (No Firebase Config detected)");
 }
 
 // --- FIXED SURVEY DATA ---
@@ -270,9 +276,6 @@ const IntroScreen = ({ onStart, isAuthReady }) => {
 const ChoiceCard = ({ option, data, onSelect, isSelected, isOtherSelected }) => {
   const price = data["Monthly Price"];
   
-  // Dynamic styles based on selection state
-  // If THIS card is selected: Green border, Green glow
-  // If OTHER card is selected: Opacity reduced, Grayscale
   let containerClasses = "bg-gray-900 border border-gray-800";
   if (isSelected) {
       containerClasses = "bg-gray-900 border-2 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)] scale-[1.02]";
@@ -283,7 +286,6 @@ const ChoiceCard = ({ option, data, onSelect, isSelected, isOtherSelected }) => 
   return (
     <div className={`relative rounded-xl p-3 md:p-5 transition-all duration-300 flex flex-col h-full ${containerClasses}`}>
       
-      {/* Compact Header */}
       <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-800">
         <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">Option {option}</span>
         <div className="flex items-baseline gap-1 text-white">
@@ -292,9 +294,7 @@ const ChoiceCard = ({ option, data, onSelect, isSelected, isOtherSelected }) => 
         </div>
       </div>
 
-      {/* Attributes - Compact Grid for Mobile */}
       <div className="space-y-2 flex-grow">
-        {/* Row 1: Access & Commitment */}
         <div className="grid grid-cols-2 gap-2">
             <div>
                 <div className="flex items-center gap-1 mb-0.5">
@@ -312,7 +312,6 @@ const ChoiceCard = ({ option, data, onSelect, isSelected, isOtherSelected }) => 
             </div>
         </div>
 
-        {/* Row 2: Recovery & Perks */}
         <div className="grid grid-cols-2 gap-2 pt-1">
             <div>
                  <div className="flex items-center gap-1 mb-0.5">
@@ -331,7 +330,6 @@ const ChoiceCard = ({ option, data, onSelect, isSelected, isOtherSelected }) => 
         </div>
       </div>
 
-      {/* Explicit Select Button */}
       <div className="mt-4 pt-2">
         <button 
             onClick={onSelect}
@@ -428,6 +426,20 @@ const ResultsScreen = ({ demographic, choices, onReset }) => {
   );
 };
 
+const ErrorScreen = ({ error, onRetry }) => (
+    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="text-red-600 mb-4" size={48} />
+        <h2 className="text-xl font-bold uppercase italic tracking-wider mb-2">Connection Error</h2>
+        <p className="text-gray-500 text-sm mb-6 max-w-xs">{error}</p>
+        <button 
+          onClick={onRetry}
+          className="px-8 py-3 bg-white text-black font-bold uppercase rounded-full hover:bg-gray-200"
+        >
+          Try Again
+        </button>
+    </div>
+);
+
 const LoadingScreen = () => (
     <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6">
         <Loader2 className="animate-spin text-red-600 mb-4" size={48} />
@@ -445,14 +457,18 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [user, setUser] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
   
-  // New state for transition animation
-  const [transitionState, setTransitionState] = useState('idle'); // 'idle', 'selected-A', 'selected-B'
+  const [transitionState, setTransitionState] = useState('idle'); 
   
   const TOTAL_QUESTIONS = FIXED_QUESTIONS.length;
 
   useEffect(() => {
-    if (!firebaseConfig) return;
+    if (!firebaseConfig) {
+      console.warn("No Firebase Config loaded.");
+      return;
+    }
+
     const initAuth = async () => {
        try { await signInAnonymously(auth); } catch (error) { console.error("Auth Error:", error); }
     };
@@ -471,10 +487,7 @@ export default function App() {
   };
 
   const handleSelectWithDelay = (choice) => {
-      // 1. Show visual feedback immediately
       setTransitionState(choice === 'A' ? 'selected-A' : 'selected-B');
-
-      // 2. Wait 500ms before actually moving to next slide
       setTimeout(() => {
           processChoice(choice);
       }, 600);
@@ -496,7 +509,7 @@ export default function App() {
     if (currentQuestionIndex >= TOTAL_QUESTIONS - 1) {
       await finishSurvey(newHistory);
     } else {
-      setTransitionState('idle'); // Reset visuals
+      setTransitionState('idle'); 
       setCurrentQuestionIndex(prev => prev + 1);
       window.scrollTo(0, 0);
     }
@@ -504,9 +517,21 @@ export default function App() {
 
   const finishSurvey = async (finalHistory) => {
       setIsSubmitting(true);
+      setErrorMsg(null);
+
       if (db && user) {
           try {
-              const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'rumble_survey_responses');
+              // FOR PREVIEW: Use 'artifacts' path
+              // FOR PRODUCTION: Use 'rumble_responses' collection
+              // The active config here is PREVIEW, so we default to 'artifacts'.
+              // When you deploy to Vercel and uncomment the production config,
+              // you should also change this line to: const collectionRef = collection(db, 'rumble_responses');
+              
+              const isPreview = typeof __firebase_config !== 'undefined';
+              const collectionRef = isPreview 
+                ? collection(db, 'artifacts', appId, 'public', 'data', 'rumble_survey_responses')
+                : collection(db, 'rumble_responses');
+              
               await addDoc(collectionRef, {
                   userId: user.uid,
                   demographics: demographics,
@@ -514,10 +539,17 @@ export default function App() {
                   completedAt: serverTimestamp(),
                   deviceType: /Mobi/i.test(navigator.userAgent) ? 'Mobile' : 'Desktop'
               });
-          } catch (error) { console.error("Error saving survey:", error); }
+              
+              setScreen('results');
+          } catch (error) { 
+              console.error("Error saving survey:", error); 
+              setErrorMsg("Failed to save your survey. Please check your internet connection.");
+          }
+      } else {
+          setErrorMsg("System error: Database not connected. Please refresh.");
       }
+      
       setIsSubmitting(false);
-      setScreen('results');
       window.scrollTo(0,0);
   };
 
@@ -527,12 +559,16 @@ export default function App() {
     setHistory([]);
     setQuestionQueue([]);
     setCurrentQuestionIndex(0);
+    setErrorMsg(null);
   };
 
-  const isAuthReady = user !== null || !firebaseConfig;
-
+  // If we are submitting, show loader
   if (isSubmitting) return <LoadingScreen />;
 
+  // If there was a save error, show error screen
+  if (errorMsg) return <ErrorScreen error={errorMsg} onRetry={() => finishSurvey(history)} />;
+
+  const isAuthReady = user !== null;
   const currentSet = questionQueue[currentQuestionIndex];
 
   return (
